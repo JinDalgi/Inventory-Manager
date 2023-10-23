@@ -1,6 +1,9 @@
 package com.springboot.inventory.common.jwt;
 
 import com.springboot.inventory.common.enums.TokenState;
+import com.springboot.inventory.common.enums.TokenType;
+import com.springboot.inventory.common.enums.UserRoleEnum;
+import io.jsonwebtoken.Claims;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseCookie;
@@ -15,6 +18,7 @@ import javax.servlet.http.Cookie;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
 import java.io.IOException;
+import java.net.URLEncoder;
 
 @RequiredArgsConstructor
 public class JwtAuthFilter extends OncePerRequestFilter {
@@ -41,20 +45,26 @@ public class JwtAuthFilter extends OncePerRequestFilter {
         }
 
         if (accessToken != null) {
-            if (jwtProvider.validateToken(accessToken) == TokenState.VAILD) {
+            TokenState state = jwtProvider.validateToken(accessToken);
+            if (TokenState.VAILD.equals(state)) {
                 setAuthentication(jwtProvider.getUserInfoFromToken(accessToken).getSubject());
-            } else if (jwtProvider.validateToken(accessToken) == TokenState.EXPIRED) {
-                // Access Token Cookie 삭제
-                ResponseCookie responseCookie = ResponseCookie.from(JwtProvider.AUTHORIZATION_HEADER, null)
-                        .path("/")
-                        .httpOnly(true)
-                        .sameSite("None")
-                        .secure(true)
-                        .maxAge(1)
-                        .build();
-                response.addHeader("Set-Cookie", responseCookie.toString());
-                jwtExceptionHandler(response, "NEED REISSUE", HttpStatus.SEE_OTHER);
-                return;
+            } else if (TokenState.EXPIRED.equals(state)) {
+                if (jwtProvider.validateRefreshToken(refreshToken)) {
+                    Claims userInfo = jwtProvider.getUserInfoFromToken(refreshToken);
+                    String email = userInfo.getSubject();
+                    String createdAccessToken = jwtProvider.createToken(email, UserRoleEnum.USER, TokenType.ACCESS);
+                    ResponseCookie cookie = ResponseCookie.from(
+                                    JwtProvider.AUTHORIZATION_HEADER,
+                                    URLEncoder.encode(createdAccessToken, "UTF-8"))
+                            .path("/")
+                            .httpOnly(true)
+                            .sameSite("None")
+                            .secure(true)
+                            .maxAge(JwtProvider.ACCESS_TOKEN_TIME)
+                            .build();
+                    response.addHeader("Set-Cookie", cookie.toString());
+                    setAuthentication(email);
+                }
             }
         } else if (refreshToken != null) {
             if (jwtProvider.validateRefreshToken(refreshToken)) {

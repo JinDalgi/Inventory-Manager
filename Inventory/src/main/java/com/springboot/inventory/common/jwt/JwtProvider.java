@@ -44,7 +44,7 @@ public class JwtProvider {
     public static final String AUTHORIZATION_KEY = "auth";
     private static final String BEARER_PREFIX = "Bearer-";
 
-    public static final long ACCESS_TOKEN_TIME = 60 * 60 * 1000L;   // 1시간
+    public static final long ACCESS_TOKEN_TIME = 30 * 60 * 1000L;   // 30분
     public static final long REFRESH_TOKEN_TIME = 14 * 24 * 60 * 60 * 1000L;    // 2주
 
     @Value("${jwt.secret.key}")
@@ -70,14 +70,13 @@ public class JwtProvider {
 
     // 토큰 생성
     public String createToken(String email, UserRoleEnum roles, TokenType tokenType) {
-        Date date = new Date();
         long time = tokenType == TokenType.ACCESS ? ACCESS_TOKEN_TIME : REFRESH_TOKEN_TIME;
 
         return BEARER_PREFIX + Jwts.builder()
                 .setSubject(email)
                 .claim(AUTHORIZATION_KEY, roles)
-                .setExpiration(new Date(date.getTime() + time))
-                .setIssuedAt(date)
+                .setExpiration(new Date(System.currentTimeMillis() + time))
+                .setIssuedAt(new Date())
                 .signWith(key, signatureAlgorithm)
                 .compact();
     }
@@ -95,6 +94,10 @@ public class JwtProvider {
 
     // refreshToken 검증
     public Boolean validateRefreshToken(String refreshToken) {
+        if (!StringUtils.hasText(refreshToken)) {
+            return false;
+        }
+
         // 1차 토큰 검증
         if (validateToken(refreshToken) != TokenState.VAILD) {
             return false;
